@@ -6,8 +6,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
-
-
 // Create a UDP client with broadcasting enabled
 using (UdpClient udpClient = new UdpClient { EnableBroadcast = true })
 {
@@ -15,7 +13,7 @@ using (UdpClient udpClient = new UdpClient { EnableBroadcast = true })
     byte[] requestData = Encoding.ASCII.GetBytes("Request");
     int udpPort = 8888;
     udpClient.Client.ReceiveTimeout = 5000; //Set a timeout for receiving responses - 5 seconds timeout
-    
+
     var iPAddresses = Dns.GetHostEntry(Dns.GetHostName()).AddressList.ToList(); // fetch IP Address List in the network
     var detectedServerIPs = new HashSet<IPAddress>();  // List to store detected gRPC server IPs
     IPEndPoint serverEndPoint = new IPEndPoint(IPAddress.Any, 0);
@@ -34,18 +32,44 @@ using (UdpClient udpClient = new UdpClient { EnableBroadcast = true })
 
         try
         {
+            //Modfiy the IP add 255 to end
+            byte[] bytes = ip.GetAddressBytes();
+            bytes[3] = 255;
+
+            iPAddress = new IPAddress(bytes);
+
             // Send request to server
             udpClient.Send(requestData, requestData.Length, new IPEndPoint(iPAddress, udpPort));
-            
-            // Receive response to server
-            byte[] serverResponseData = udpClient.Receive(ref serverEndPoint);
-            string serverResponse = Encoding.ASCII.GetString(serverResponseData);
 
-            if (serverResponse == "Response")
+            while (true)
             {
-                Console.WriteLine($"Received '{serverResponse}' from {serverEndPoint.Address}");
-                detectedServerIPs.Add(serverEndPoint.Address);
+                try
+                {
+                    // Receive response to server
+                    byte[] serverResponseData = udpClient.Receive(ref serverEndPoint);
+                    string serverResponse = Encoding.ASCII.GetString(serverResponseData);
+
+                    if (serverResponse == "Response")
+                    {
+                        Console.WriteLine($"Received '{serverResponse}' from {serverEndPoint.Address}");
+                        detectedServerIPs.Add(serverEndPoint.Address);
+                    }
+                }
+                catch (SocketException ex)
+                {
+                    if (ex.SocketErrorCode == SocketError.TimedOut)
+                    {
+                        // Exit loop when timeout occurs
+                        break;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"SocketException: {ex.Message}");
+                    }
+                }
             }
+
+       
         }
         catch (SocketException ex)
         {
